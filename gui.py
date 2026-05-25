@@ -6,7 +6,7 @@ import sounddevice as sd
 import math
 import random
 
-from ssl import HRTFProcessor, rotate_sound
+from ssl import HRTFProcessor, rotate_sound, generate_random_positions
 
 class VirtualSoundGUI:
     def __init__(self, root):
@@ -196,42 +196,48 @@ class VirtualSoundGUI:
             return
 
         self.is_playing_random = not self.is_playing_random
-        
+
         if self.is_playing_random:
             self.btn_random.config(text="Stop Random Audio")
             self.disable_controls()
-            self.play_next_random_chunk()
+
+            enable_ola = self.enable_ola_var.get()
+            chunk_sec = 1.0
+            num_chunks = 10
+
+            binaural_sig, self.random_positions = generate_random_positions(
+                self.processor, self.audio_data, self.fs,
+                chunk_sec=chunk_sec, num_chunks=num_chunks, enable_smoothing=enable_ola)
+
+            sf.write('output_random.wav', binaural_sig, self.fs)
+            sd.stop()
+            sd.play(binaural_sig, self.fs)
+
+            self.visualize_random_loop(0, int(chunk_sec * 1000))
         else:
             self.btn_random.config(text="Start Random Continuous Audio")
             self.enable_controls()
             sd.stop()
             self.draw_head()
 
-    def play_next_random_chunk(self):
-        if not self.is_playing_random:
-            return
-            
-        # Select random azimuth and elevation
-        az = random.choice(self.processor.azimuths)
-        el = random.choice([e for e in self.processor.elevations if -45 <= e <= 45])
-        
-        # Process a 1.5-second chunk
-        chunk_len = int(self.fs * 1.5)
-        if len(self.audio_data) < chunk_len:
-            audio_chunk = np.pad(self.audio_data, (0, chunk_len - len(self.audio_data)), 'wrap')
+    def visualize_random_loop(self, step, chunk_ms):
+        if step < len(self.random_positions) and self.is_playing_random:
+            az, el = self.random_positions[step]
+            self.draw_sound_source(az, el)
+
+            if step == len(self.random_positions) - 1:
+                self.root.after(chunk_ms, self.force_stop_random)
+            else:
+                self.root.after(chunk_ms, self.visualize_random_loop, step + 1, chunk_ms)
         else:
-            start_idx = random.randint(0, len(self.audio_data) - chunk_len)
-            audio_chunk = self.audio_data[start_idx:start_idx+chunk_len]
-            
-        binaural_sig = self.processor.apply_hrtf(audio_chunk, az, el)
-        
-        self.draw_sound_source(az, el)
-        
-        sd.stop()
-        sd.play(binaural_sig, self.fs)
-        
-        # Schedule the next chunk after 1.5 seconds (1500 ms)
-        self.root.after(1500, self.play_next_random_chunk)
+            self.force_stop_random()
+
+    def force_stop_random(self):
+        if self.is_playing_random:
+            self.is_playing_random = False
+            self.btn_random.config(text="Start Random Continuous Audio")
+            self.enable_controls()
+            self.draw_head()
         
     def disable_controls(self):
         self.btn_load.state(['disabled'])
