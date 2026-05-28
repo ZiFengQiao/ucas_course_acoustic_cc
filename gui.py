@@ -6,7 +6,7 @@ import sounddevice as sd
 import math
 import random
 
-from ssl import HRTFProcessor, rotate_sound, generate_random_positions
+from ssl import HRTFProcessor, rotate_sound, generate_random_positions, calculate_itd
 
 class VirtualSoundGUI:
     def __init__(self, root):
@@ -28,6 +28,7 @@ class VirtualSoundGUI:
         self.fs = None
         self.is_playing_random = False
         self.is_playing_rotating = False
+        self.random_positions = []
         
         # UI Layout
         main_frame = ttk.Frame(root, padding=20)
@@ -51,10 +52,19 @@ class VirtualSoundGUI:
         ttk.Label(control_frame, text="Elevation (degrees):").pack(anchor=tk.W)
         self.elevation_entry = ttk.Entry(control_frame)
         self.elevation_entry.insert(0, "0")
-        self.elevation_entry.pack(fill=tk.X, pady=(0, 20))
-        
-        self.btn_static = ttk.Button(control_frame, text="Process & Play Static", command=self.process_play)
-        self.btn_static.pack(fill=tk.X, pady=(0, 10))
+        self.elevation_entry.pack(fill=tk.X, pady=(0, 5))
+
+        self.itd_label = ttk.Label(control_frame, text="ITD: -- ms", foreground="gray")
+        self.itd_label.pack(anchor=tk.W, pady=(0, 15))
+
+        btn_frame = ttk.Frame(control_frame)
+        btn_frame.pack(fill=tk.X, pady=(0, 10))
+
+        self.btn_static = ttk.Button(btn_frame, text="Process & Play", command=self.process_play)
+        self.btn_static.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 3))
+
+        self.btn_save = ttk.Button(btn_frame, text="Save WAV", command=self.save_audio)
+        self.btn_save.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(3, 0))
         
         ttk.Separator(control_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
         
@@ -145,19 +155,49 @@ class VirtualSoundGUI:
         if self.audio_data is None:
             messagebox.showerror("Warning", "Please select an audio file first!")
             return
-        
+
         try:
             az = float(self.azimuth_entry.get())
             el = float(self.elevation_entry.get())
-            
+
+            itd_s = calculate_itd(self.processor, az, el)
+            self.itd_label.config(text=f"ITD: {itd_s * 1000:.3f} ms")
+
             binaural_sig = self.processor.apply_hrtf(self.audio_data, az, el)
-            
+
             self.draw_sound_source(az, el)
-            
-            sf.write('output_static.wav', binaural_sig, self.fs)
+
+            filename = f"output_az{az:.0f}_el{el:.0f}.wav"
+            sf.write(filename, binaural_sig, self.fs)
             sd.stop()
             sd.play(binaural_sig, self.fs)
-            
+
+        except ValueError:
+            messagebox.showerror("Error", "Invalid Azimuth or Elevation values.")
+
+    def save_audio(self):
+        if self.processor is None:
+            messagebox.showerror("Warning", "HRTF database not loaded.")
+            return
+        if self.audio_data is None:
+            messagebox.showerror("Warning", "Please select an audio file first!")
+            return
+
+        try:
+            az = float(self.azimuth_entry.get())
+            el = float(self.elevation_entry.get())
+
+            binaural_sig = self.processor.apply_hrtf(self.audio_data, az, el)
+
+            filename = f"output_az{az:.0f}_el{el:.0f}.wav"
+            sf.write(filename, binaural_sig, self.fs)
+
+            itd_s = calculate_itd(self.processor, az, el)
+            self.itd_label.config(text=f"ITD: {itd_s * 1000:.3f} ms")
+            self.draw_sound_source(az, el)
+
+            messagebox.showinfo("Saved", f"Audio saved as:\n{filename}")
+
         except ValueError:
             messagebox.showerror("Error", "Invalid Azimuth or Elevation values.")
 
@@ -169,7 +209,7 @@ class VirtualSoundGUI:
         
         enable_ola = self.enable_ola_var.get()
         binaural_sig = rotate_sound(self.processor, self.audio_data, self.fs, enable_smoothing=enable_ola)
-        sf.write('output_rotating.wav', binaural_sig, self.fs)
+        sf.write('output_rotating_horizontal.wav', binaural_sig, self.fs)
         
         sd.stop()
         sd.play(binaural_sig, self.fs)
@@ -242,10 +282,12 @@ class VirtualSoundGUI:
     def disable_controls(self):
         self.btn_load.state(['disabled'])
         self.btn_static.state(['disabled'])
+        self.btn_save.state(['disabled'])
         self.btn_rotate.state(['disabled'])
 
     def enable_controls(self):
         self.btn_load.state(['!disabled'])
         self.btn_static.state(['!disabled'])
+        self.btn_save.state(['!disabled'])
         self.btn_rotate.state(['!disabled'])
 
