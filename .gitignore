@@ -1,5 +1,6 @@
 __pycache__/
 cipic-hrtf-database/
-output_*.wav
+*.wav
 *.pyc
 .claude/
+*.png
