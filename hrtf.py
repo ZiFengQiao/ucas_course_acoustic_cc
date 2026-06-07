@@ -1,3 +1,11 @@
+'''
+Author: Wang, Qiaoyu
+Date: 2026-06-07 16:14:41
+LastEditors: Wang, Qiaoyu
+LastEditTime: 2026-06-07 19:37:39
+Description: HRTF信号处理后端
+'''
+
 import numpy as np
 import scipy.io as sio
 from scipy.signal import fftconvolve
@@ -144,7 +152,7 @@ class HRTFProcessor:
         plt.grid()
         plt.tight_layout()
         plt.savefig(str(PROJECT_ROOT / f'itd_vs_azimuth_{method}.png'))
-        plt.show()
+        plt.show(block=False)
 
     def rotate_sound(self, audio, block_duration=0.05, hop_ratio=0.25):
         """
